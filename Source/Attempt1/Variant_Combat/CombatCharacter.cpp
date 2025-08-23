@@ -2,6 +2,7 @@
 
 
 #include "CombatCharacter.h"
+#include "Attempt1Character.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
