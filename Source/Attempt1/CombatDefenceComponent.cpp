@@ -40,6 +40,8 @@ FDamageResult UCombatDefenceComponent::HandleIncomingAttack(AActor* /*Attacker*/
     FDamageResult Out;
     const double Now = GetWorld()->GetTimeSeconds();
 
+    OwnerChar->GetMesh()->GetAnimInstance()->Montage_Play(DamagedAnim, 1.0f, EMontagePlayReturnType::MontageLength, 0.f, true);
+
     if (bIsDodging && Now <= DodgeEndTime)
     {
         Out.ActualDamage = 0.f;

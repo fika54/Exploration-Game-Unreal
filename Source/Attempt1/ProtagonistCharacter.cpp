@@ -56,7 +56,14 @@ AProtagonistCharacter::AProtagonistCharacter()
     Melee = CreateDefaultSubobject<UCombatMeleeComponent>(TEXT("Melee"));
     Ranged = CreateDefaultSubobject<UCombatRangedComponent>(TEXT("Ranged"));
 
+
     ActiveAttack = Melee; // default
+}
+
+void AProtagonistCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+    EquipDefaultWeapon(true);
 }
 
 void AProtagonistCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -74,7 +81,13 @@ void AProtagonistCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
         if (LookAction)      EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &AProtagonistCharacter::Look);
 
         if (PrimaryAttackAction)   EIC->BindAction(PrimaryAttackAction, ETriggerEvent::Started, this, &AProtagonistCharacter::OnPrimary);
-        if (SecondaryAttackAction) EIC->BindAction(SecondaryAttackAction, ETriggerEvent::Started, this, &AProtagonistCharacter::OnSecondary);
+
+
+        if (SecondaryAttackAction) 
+        { 
+            EIC->BindAction(SecondaryAttackAction, ETriggerEvent::Started, this, &AProtagonistCharacter::OnSecondaryStart); 
+            EIC->BindAction(SecondaryAttackAction, ETriggerEvent::Completed, this, &AProtagonistCharacter::OnSecondaryRelease);
+        }
 
         if (BlockAction)
         {
@@ -129,6 +142,27 @@ void AProtagonistCharacter::DoLook(float Yaw, float Pitch)
 void AProtagonistCharacter::DoJumpStart() { Jump(); }
 void AProtagonistCharacter::DoJumpEnd() { StopJumping(); }
 
+
+//void AProtagonistCharacter::EquipWeaponClass(TSubclassOf<UWeaponComponent> WeaponClass, bool bPlayMontage)
+//{
+//    if (!WeaponClass) return;
+//
+//    // If you already have a weapon, you might holster/destroy it here
+//    if (ActiveWeapon)
+//    {
+//        ActiveWeapon->HolsterWeapon(false);
+//        //ActiveWeapon->DestroyComponent();    // optional, if you want to replace
+//        ActiveWeapon = nullptr;
+//    }
+//
+//    // Create an instance of that WeaponComponent class on this character
+//    ActiveWeapon = NewObject<UWeaponComponent>(this, WeaponClass);
+//    if (!ActiveWeapon) return;
+//
+//    ActiveWeapon->RegisterComponent();       // attach & initialize
+//    ActiveWeapon->EquipWeapon(bPlayMontage); // attaches to hand socket, plays unholster if set
+//}
+
 // Equip helpers
 void AProtagonistCharacter::EquipMelee() { ActiveAttack = Melee; }
 void AProtagonistCharacter::EquipRanged() { ActiveAttack = Ranged; }
@@ -136,12 +170,24 @@ void AProtagonistCharacter::EquipRanged() { ActiveAttack = Ranged; }
 // Combat input handlers
 void AProtagonistCharacter::OnPrimary()
 {
-    if (ActiveAttack) ActiveAttack->PrimaryAttack();
+    if (ActiveWeapon) ActiveWeapon->PrimaryAttack();
 }
 
-void AProtagonistCharacter::OnSecondary()
+void AProtagonistCharacter::OnSecondaryStart()
 {
-    if (ActiveAttack) ActiveAttack->SecondaryAttack();
+    if (ActiveWeapon) ActiveWeapon->SecondaryAttack_Start();
+}
+
+void AProtagonistCharacter::OnSecondaryRelease()
+{
+    if (ActiveWeapon) ActiveWeapon->SecondaryAttack_Release();
+}
+
+void AProtagonistCharacter::OnToggleHolster()
+{
+    if (!ActiveWeapon) return;
+    ActiveWeapon->bIsEquipped ? ActiveWeapon->HolsterWeapon(true)
+        : ActiveWeapon->EquipWeapon(true);
 }
 
 void AProtagonistCharacter::OnBlockStart() { StartBlock(); }
@@ -208,4 +254,60 @@ void AProtagonistCharacter::ApplyRawDamage_Implementation(
     float Damage, AActor* Causer, const FVector& ImpactPoint, const FVector& ImpulseDir)
 {
     if (Defence) Defence->ApplyRawDamage(Damage, Causer, ImpactPoint, ImpulseDir);
+}
+
+
+void AProtagonistCharacter::EnableStrafing()
+{
+    auto* Move = GetCharacterMovement();
+    Move->bOrientRotationToMovement = false;   // don't turn toward velocity
+    bUseControllerRotationYaw = true;          // face ControlRotation yaw directly
+    Move->bUseControllerDesiredRotation = false;
+    //Move->RotationRate = FRotator(0.f, 720.f, 0.f); // not used here, but fine
+    GetCameraBoom()->bUsePawnControlRotation = true;
+}
+
+void AProtagonistCharacter::EquipDefaultWeapon(bool bPlayMontage)
+{
+    if (DefaultWeaponClass)
+    {
+        EquipWeaponClass(DefaultWeaponClass, /*bHolsterPrevious*/true);
+        if (ActiveWeapon && bPlayMontage)
+        {
+            ActiveWeapon->EquipWeapon(true);
+        }
+    }
+}
+
+void AProtagonistCharacter::EquipWeaponClass(TSubclassOf<UWeaponComponent> WeaponClass, bool bHolsterPrevious)
+{
+    // Holster & unhook previous
+    if (ActiveWeapon)
+    {
+        if (bHolsterPrevious) ActiveWeapon->HolsterWeapon(true);
+        ActiveWeapon->OnLocomotionSetChanged.RemoveAll(this);
+        ActiveWeapon = nullptr;
+    }
+    if (!WeaponClass) return;
+
+    // Spawn a new component owned by this character
+    UWeaponComponent* NewWeapon = NewObject<UWeaponComponent>(this, WeaponClass);
+    if (!NewWeapon) return;
+
+    // Register so it ticks/works & won’t get GC’d (UPROPERTY keeps it alive too)
+    NewWeapon->RegisterComponent();                               // required
+    AddInstanceComponent(NewWeapon);                              // optional but good practice
+    // NewWeapon attaches to mesh in its own EquipWeapon(); nothing else needed here
+
+    ActiveWeapon = NewWeapon;
+    ActiveWeapon->OnLocomotionSetChanged.AddDynamic(this, &AProtagonistCharacter::OnWeaponLocomotionChanged);
+
+    // Auto-equip
+    ActiveWeapon->EquipWeapon(true);
+}
+
+void AProtagonistCharacter::OnWeaponLocomotionChanged(EWeaponLocomotionSet NewSet)
+{
+    // Example: store to a variable the AnimBP reads (Blend by Enum)
+    // CurrentWeaponLocomotion = NewSet;  // (make this a UPROPERTY on the character)
 }

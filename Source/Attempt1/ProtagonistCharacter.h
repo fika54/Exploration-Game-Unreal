@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "WeaponComponent.h"
 #include "Logging/LogMacros.h"
 #include "CombatInterface.h"
 #include "ProtagonistCharacter.generated.h"
@@ -66,6 +67,12 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
 	UCombatAttackComponent* ActiveAttack;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	UWeaponComponent* ActiveWeapon = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	TSubclassOf<UWeaponComponent> DefaultWeaponClass;
+
 public:
 	AProtagonistCharacter();
 
@@ -76,13 +83,18 @@ protected:
 	void Look(const FInputActionValue& Value);
 
 	void OnPrimary();
-	void OnSecondary();
+	void OnSecondaryStart();
+	void OnSecondaryRelease();
+	void OnToggleHolster();
 	void OnBlockStart();
 	void OnBlockEnd();
 	void OnDodge();
 
+	virtual void BeginPlay() override;
+
 public:
 	UFUNCTION(BlueprintCallable, Category = "Input") virtual void DoMove(float Right, float Forward);
+	UFUNCTION(BlueprintCallable, Category = "Input") virtual void EnableStrafing();
 	UFUNCTION(BlueprintCallable, Category = "Input") virtual void DoLook(float Yaw, float Pitch);
 	UFUNCTION(BlueprintCallable, Category = "Input") virtual void DoJumpStart();
 	UFUNCTION(BlueprintCallable, Category = "Input") virtual void DoJumpEnd();
@@ -92,6 +104,17 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Combat|Notifies") void AN_MeleeLightTrace();
 	UFUNCTION(BlueprintCallable, Category = "Combat|Notifies") void AN_MeleeHeavyTrace();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon") void EquipDefaultWeapon(bool bPlayMontage = true);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon") void EquipWeaponClass(TSubclassOf<UWeaponComponent> WeaponClass, bool bHolsterPrevious = true);
+
+	UFUNCTION() void OnWeaponLocomotionChanged(EWeaponLocomotionSet NewSet);
+
+
+	/*UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void EquipWeaponClass(TSubclassOf<UWeaponComponent> WeaponClass, bool bPlayMontage = true);*/
+
 
 	// ICombatInterface
 	virtual void TryAttack_Implementation(EAttackType Type) override;
