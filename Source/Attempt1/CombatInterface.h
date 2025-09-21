@@ -102,7 +102,7 @@ public:
     float GetParryWindowSeconds() const;
 
     // Called on the target when an attack arrives; returns result after block/parry reductions
-    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Combat|Defence")
+    UFUNCTION(BlueprintNativeEvent, Category = "Combat|Defence", meta = (BlueprintInternalUseOnly = "true"))
     FDamageResult HandleIncomingAttack(AActor* Attacker, float IncomingDamage,
         const FVector& ImpactPoint, const FVector& ImpulseDir);
 

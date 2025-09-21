@@ -8,9 +8,7 @@
 #include "Animation/AnimInstance.h"
 #include "Engine/World.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Kismet/GameplayStatics.h"                // *** CHANGED: for ApplyPointDamage fallback
 #include "CombatInterface.h"
-#include "CombatDefenceComponent.h"                // *** CHANGED: prefer calling Defence component when present
 
 UWeaponComponent::UWeaponComponent()
 {
@@ -20,14 +18,14 @@ UWeaponComponent::UWeaponComponent()
     Stats.AttackPlayRate = 1.0f;
     Stats.AttackForce = 250.0f;
 
-    LightTraceSpec.Distance = 75.f;
-    LightTraceSpec.Radius = 60.f;
+    LightTraceSpec.Distance = 75.0f;
+    LightTraceSpec.Radius = 60.0f;
     LightTraceSpec.bUseSocket = true;
     LightTraceSpec.SocketOrBone = FName("hand_r");
 
     HeavyTraceSpec = LightTraceSpec;
-    HeavyTraceSpec.Distance = 90.f;
-    HeavyTraceSpec.Radius = 75.f;
+    HeavyTraceSpec.Distance = 90.0f;
+    HeavyTraceSpec.Radius = 75.0f;
 
     OnAttackMontageEnded.BindUObject(this, &UWeaponComponent::AttackMontageEnded);
 }
@@ -35,8 +33,14 @@ UWeaponComponent::UWeaponComponent()
 void UWeaponComponent::BeginPlay()
 {
     Super::BeginPlay();
+
     RefreshOwnerPointers();
     EnsureWeaponComponents();
+
+    if (OwnerAnim)
+    {
+        OwnerAnim->OnPlayMontageNotifyBegin.AddDynamic(this, &UWeaponComponent::OnMontageNotifyBegin);
+    }
 
     const bool bStartHolstered = true;
     ApplyWeaponAnimClass(bStartHolstered);
@@ -105,12 +109,11 @@ void UWeaponComponent::PlayOwnerMontage(UAnimMontage* Montage, float PlayRate) c
     OwnerAnim->Montage_Play(Montage, PlayRate);
 }
 
-// -------------------- Owner Anim Layers and Locomotion --------------------
+// Owner anim layers and locomotion (optional)
 
 void UWeaponComponent::ApplyOwnerAnimLayers(bool bLink)
 {
     if (!OwnerAnim || !OwnerWeaponLayerClass) return;
-
     if (bLink)
     {
         OwnerAnim->LinkAnimClassLayers(OwnerWeaponLayerClass);
@@ -146,24 +149,18 @@ void UWeaponComponent::RestoreOwnerLocomotionOnHolster()
     {
         if (UCharacterMovementComponent* Move = OwnerChar->GetCharacterMovement())
         {
-            if (CachedRunSpeed > 0.f) Move->MaxWalkSpeed = CachedRunSpeed;
-            if (CachedWalkSpeed > 0.f) Move->MaxWalkSpeedCrouched = CachedWalkSpeed;
+            if (CachedRunSpeed > 0.0f)  Move->MaxWalkSpeed = CachedRunSpeed;
+            if (CachedWalkSpeed > 0.0f) Move->MaxWalkSpeedCrouched = CachedWalkSpeed;
         }
     }
 }
 
-// -------------------- Equip / Holster --------------------
+// Equip / Holster
 
 void UWeaponComponent::EquipWeapon(bool bPlayMontage)
 {
     RefreshOwnerPointers();
     EnsureWeaponComponents();
-
-    // *** CHANGED [Notify Binding]: ensure our component receives montage notifies
-    if (OwnerAnim && !OwnerAnim->OnPlayMontageNotifyBegin.IsAlreadyBound(this, &UWeaponComponent::OnMontageNotifyBegin))
-    {
-        OwnerAnim->OnPlayMontageNotifyBegin.AddDynamic(this, &UWeaponComponent::OnMontageNotifyBegin);
-    }
 
     if (bPlayMontage && UnholsterMontage)
     {
@@ -198,17 +195,16 @@ void UWeaponComponent::HolsterWeapon(bool bPlayMontage)
     bIsEquipped = false;
 }
 
-// -------------------- Attacks (montage+section flow) --------------------
+// Attacks (montage + section flow)
 
 void UWeaponComponent::PrimaryAttack()
 {
     if (!OwnerAnim || !ComboAttackMontage || ComboSectionNames.Num() == 0) return;
 
     const double Now = GetWorld()->GetTimeSeconds();
-
     if (bIsAttacking)
     {
-        CachedAttackInputTime = Now; // buffer
+        CachedAttackInputTime = Now;
         return;
     }
 
@@ -247,8 +243,16 @@ void UWeaponComponent::StartCombo()
     bIsAttacking = true;
     ComboIndex = 0;
 
-    const float Len = OwnerAnim->Montage_Play(ComboAttackMontage, Stats.AttackPlayRate, EMontagePlayReturnType::MontageLength, 0.f, true);
-    if (Len > 0.f)
+    BeginHitWindow();
+
+    const float Len = OwnerAnim->Montage_Play(
+        ComboAttackMontage,
+        Stats.AttackPlayRate,
+        EMontagePlayReturnType::MontageLength,
+        0.0f,
+        true
+    );
+    if (Len > 0.0f)
     {
         OwnerAnim->Montage_SetEndDelegate(OnAttackMontageEnded, ComboAttackMontage);
     }
@@ -261,8 +265,16 @@ void UWeaponComponent::StartCharged()
     bIsAttacking = true;
     bHasLoopedChargedAttack = false;
 
-    const float Len = OwnerAnim->Montage_Play(ChargedAttackMontage, Stats.AttackPlayRate, EMontagePlayReturnType::MontageLength, 0.f, true);
-    if (Len > 0.f)
+    BeginHitWindow();
+
+    const float Len = OwnerAnim->Montage_Play(
+        ChargedAttackMontage,
+        Stats.AttackPlayRate,
+        EMontagePlayReturnType::MontageLength,
+        0.0f,
+        true
+    );
+    if (Len > 0.0f)
     {
         if (!ChargeLoopSection.IsNone())
         {
@@ -275,43 +287,17 @@ void UWeaponComponent::StartCharged()
 void UWeaponComponent::AttackMontageEnded(UAnimMontage* /*Montage*/, bool /*bInterrupted*/)
 {
     bIsAttacking = false;
+    EndHitWindow();
 
     const double Now = GetWorld()->GetTimeSeconds();
     if (Now - CachedAttackInputTime <= AttackInputCacheTimeTolerance)
     {
-        if (bIsChargingAttack)
-        {
-            StartCharged();
-        }
-        else
-        {
-            StartCombo();
-        }
+        if (bIsChargingAttack) StartCharged();
+        else StartCombo();
     }
 }
 
-// *** CHANGED [Notify Binding]: routes montage notifies to our AN_* functions
-void UWeaponComponent::OnMontageNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& /*Payload*/)
-{
-    if (NotifyName == "CheckComboWindow")
-    {
-        AN_CheckComboWindow();
-    }
-    else if (NotifyName == "CheckCharged")
-    {
-        AN_CheckChargedAttack();
-    }
-    else if (NotifyName == "DoLightTrace")
-    {
-        AN_DoLightTrace(NAME_None);
-    }
-    else if (NotifyName == "DoHeavyTrace")
-    {
-        AN_DoHeavyTrace(NAME_None);
-    }
-}
-
-// -------------------- Anim Notifies --------------------
+// Anim notifies
 
 void UWeaponComponent::AN_CheckComboWindow()
 {
@@ -327,6 +313,8 @@ void UWeaponComponent::AN_CheckComboWindow()
     {
         OwnerAnim->Montage_JumpToSection(ComboSectionNames[Next], ComboAttackMontage);
         ComboIndex = Next;
+
+        BeginHitWindow();
     }
 }
 
@@ -349,6 +337,7 @@ void UWeaponComponent::AN_CheckChargedAttack()
         if (!ChargeAttackSection.IsNone())
         {
             OwnerAnim->Montage_JumpToSection(ChargeAttackSection, ChargedAttackMontage);
+            BeginHitWindow();
         }
     }
 }
@@ -363,7 +352,35 @@ void UWeaponComponent::AN_DoHeavyTrace(FName DamageSourceBone)
     PerformMeleeTrace(HeavyTraceSpec, DamageSourceBone.IsNone() ? HeavyTraceSpec.SocketOrBone : DamageSourceBone);
 }
 
-// -------------------- Trace helper --------------------
+void UWeaponComponent::OnMontageNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& /*Payload*/)
+{
+    if (NotifyName == FName("HitWindowStart")) { BeginHitWindow(); }
+    else if (NotifyName == FName("HitWindowEnd")) { EndHitWindow(); }
+}
+
+// Hit window helpers
+
+void UWeaponComponent::BeginHitWindow()
+{
+    HitActorsCurrentWindow.Reset();
+}
+
+void UWeaponComponent::EndHitWindow()
+{
+    HitActorsCurrentWindow.Reset();
+}
+
+void UWeaponComponent::AN_HitWindowStart()
+{
+    BeginHitWindow();
+}
+
+void UWeaponComponent::AN_HitWindowEnd()
+{
+    EndHitWindow();
+}
+
+// Trace helper
 
 void UWeaponComponent::PerformMeleeTrace(const FWeaponMeleeTraceSpec& Spec, FName DamageSourceBone)
 {
@@ -382,61 +399,63 @@ void UWeaponComponent::PerformMeleeTrace(const FWeaponMeleeTraceSpec& Spec, FNam
     Obj.AddObjectTypesToQuery(ECC_WorldDynamic);
 
     FCollisionShape Shape = FCollisionShape::MakeSphere(Spec.Radius);
-
-    // *** CHANGED: return initial overlaps so “start inside capsule” still registers
-    FCollisionQueryParams Params(SCENE_QUERY_STAT(WeaponMelee), false);
+    FCollisionQueryParams Params;
     Params.AddIgnoredActor(OwnerChar);
-    Params.bFindInitialOverlaps = true;
 
     const bool bHit = GetWorld()->SweepMultiByObjectType(Hits, Start, End, FQuat::Identity, Obj, Shape, Params);
 
     if (/*Spec.bDebug*/true)
     {
-        UKismetSystemLibrary::DrawDebugSphere(GetWorld(), Start, Spec.Radius, 12, FLinearColor::Blue, 1.f, 1.f);
-        UKismetSystemLibrary::DrawDebugSphere(GetWorld(), End, Spec.Radius, 12, FLinearColor::Green, 1.f, 1.f);
-        UKismetSystemLibrary::DrawDebugLine(GetWorld(), Start, End, FLinearColor::White, 1.f, 1.f);
+        UKismetSystemLibrary::DrawDebugSphere(GetWorld(), Start, Spec.Radius, 12, FLinearColor::Blue, 1.0f, 1.0f);
+        UKismetSystemLibrary::DrawDebugSphere(GetWorld(), End, Spec.Radius, 12, FLinearColor::Green, 1.0f, 1.0f);
+        UKismetSystemLibrary::DrawDebugLine(GetWorld(), Start, End, FLinearColor::White, 1.0f, 1.0f);
     }
 
     if (!bHit) return;
 
-    // *** CHANGED: useful one-time log while debugging
-    UE_LOG(LogTemp, Verbose, TEXT("MeleeTrace hits: %d"), Hits.Num());
+    int c = 0;
 
     for (const FHitResult& Hit : Hits)
     {
+        
         AActor* Target = Hit.GetActor();
         if (!Target || Target == OwnerChar) continue;
 
-        const FVector ImpulseDir = (-Hit.ImpactNormal).GetSafeNormal();
+        if (HitActorsCurrentWindow.Contains(Target)) continue;
+        HitActorsCurrentWindow.Add(Target);
 
-        // *** CHANGED: prefer a Defence component if present
-        if (UCombatDefenceComponent* Def = Target->FindComponentByClass<UCombatDefenceComponent>())
-        {
-            const FDamageResult R = Def->HandleIncomingAttack(OwnerChar, Stats.BaseDamage, Hit.ImpactPoint, ImpulseDir);
-            if (R.ActualDamage > 0.f)
-            {
-                ICombatInterface::Execute_OnDealtDamage(OwnerChar, Target, R.ActualDamage, Hit.ImpactPoint);
-            }
-            continue;
-        }
+        
 
-        // Interface on the actor (ProtagonistCharacter implements it)
+        FVector ToTarget2D = (Target->GetActorLocation() - OwnerChar->GetActorLocation());
+        ToTarget2D.Z = 0.f;
+        const FVector ImpulseDir = ToTarget2D.IsNearlyZero() ? OwnerChar->GetActorForwardVector() : ToTarget2D.GetSafeNormal();
+
         if (Target->GetClass()->ImplementsInterface(UCombatInterface::StaticClass()))
         {
-            const FDamageResult R =
+            const FDamageResult Result =
                 ICombatInterface::Execute_HandleIncomingAttack(Target, OwnerChar, Stats.BaseDamage, Hit.ImpactPoint, ImpulseDir);
-
-            if (R.ActualDamage > 0.f)
+            
+            if (Result.ActualDamage >= 0.0f)
             {
-                ICombatInterface::Execute_OnDealtDamage(OwnerChar, Target, R.ActualDamage, Hit.ImpactPoint);
+                UKismetSystemLibrary::DrawDebugSphere(GetWorld(), Start, Spec.Radius, 20 + HitActorsCurrentWindow.Num(), FLinearColor::Red, 1.0f, 1.0f);
+                ICombatInterface::Execute_OnDealtDamage(OwnerChar, Target, Result.ActualDamage, Hit.ImpactPoint);
             }
-            continue;
         }
-
-        // *** CHANGED: real fallback for non-interface actors
-        UGameplayStatics::ApplyPointDamage(
-            Target, Stats.BaseDamage, ImpulseDir, Hit,
-            OwnerChar ? OwnerChar->GetController() : nullptr,
-            OwnerChar, UDamageType::StaticClass());
+        else
+        {
+            ICombatInterface::Execute_ApplyRawDamage(Target, Stats.BaseDamage, OwnerChar, Hit.ImpactPoint, ImpulseDir);
+            ICombatInterface::Execute_OnDealtDamage(OwnerChar, Target, Stats.BaseDamage, Hit.ImpactPoint);
+        }
     }
+}
+
+void UWeaponComponent::onDodge()
+{
+    OwnerAnim->Montage_Play(
+        DodgeMontage,
+        Stats.AttackPlayRate,
+        EMontagePlayReturnType::MontageLength,
+        0.0f,
+        true
+    );
 }

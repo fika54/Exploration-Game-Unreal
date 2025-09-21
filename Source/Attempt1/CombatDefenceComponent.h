@@ -33,8 +33,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence|Dodge")
     float DodgeImpulse = 1200.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence|Hit")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence|Anim")
     UAnimMontage* DamagedAnim = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence|Anim")
+    UAnimMontage* DeathAnim = nullptr;
 
     // API
     void StartBlock();

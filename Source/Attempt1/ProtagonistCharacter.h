@@ -5,7 +5,14 @@
 #include "WeaponComponent.h"
 #include "Logging/LogMacros.h"
 #include "CombatInterface.h"
+
+#include "EnhancedInputSubsystems.h"   // UEnhancedInputLocalPlayerSubsystem
+#include "InputMappingContext.h"       // UInputMappingContext
+#include "Engine/LocalPlayer.h"        // ULocalPlayer
+
 #include "ProtagonistCharacter.generated.h"
+
+
 
 class USpringArmComponent;
 class UCameraComponent;
@@ -16,6 +23,8 @@ class UCombatDefenceComponent;
 class UCombatMeleeComponent;
 class UCombatRangedComponent;
 class UCombatAttackComponent;
+
+class UMobilityComponent;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogProtagonistCharacter, Log, All);
 
@@ -55,6 +64,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input|Combat")
 	UInputAction* DodgeAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input|Combat")
+	UInputAction* ToggleStrafeAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input|Mode")
+	UInputAction* ToggleMobilityAction;
+
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
 	UCombatDefenceComponent* Defence;
 
@@ -73,6 +89,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	TSubclassOf<UWeaponComponent> DefaultWeaponClass;
 
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mobility", meta = (AllowPrivateAccess = "true"))
+	//UMobilityComponent* Mobility = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mode")
+	bool bMobilityMode = false;
+
+	
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "InputMapping")
+	TObjectPtr<UInputMappingContext> DefaultIMC = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "InputMapping")
+	int32 IMCPriority = 0;
+
+	
+
 public:
 	AProtagonistCharacter();
 
@@ -88,9 +120,15 @@ protected:
 	void OnToggleHolster();
 	void OnBlockStart();
 	void OnBlockEnd();
-	void OnDodge();
+	void OnDodgeOrSprint();
+
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void UnPossessed() override;
 
 	virtual void BeginPlay() override;
+
+	//for experimentation
+	virtual void Tick(float DeltaTime) override;
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Input") virtual void DoMove(float Right, float Forward);
@@ -111,6 +149,28 @@ public:
 
 	UFUNCTION() void OnWeaponLocomotionChanged(EWeaponLocomotionSet NewSet);
 
+	// --- Camera / Facing toggle ---
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera")
+	bool bCameraStrafeMode = true; // true = face camera yaw & strafe
+
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void ToggleCameraStrafeMode();
+
+	// Set mode explicitly; bInstant forces an immediate snap to camera yaw
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void SetCameraStrafeMode(bool bEnable, bool bInstant = false);
+
+	// Optional: expose the current mode to AnimBP
+	UPROPERTY(BlueprintReadOnly, Category = "Camera")
+	bool bIsStrafingLocomotion = true;
+
+	UFUNCTION()
+	void AddDefaultIMC_Local();
+
+	UFUNCTION()
+	void RemoveDefaultIMC_Local();
+
+
 
 	/*UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void EquipWeaponClass(TSubclassOf<UWeaponComponent> WeaponClass, bool bPlayMontage = true);*/
@@ -130,4 +190,20 @@ public:
 public:
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+
+	//for testing
+private:
+	// Base walking speed
+	float WalkSpeed;
+
+	// Sprinting speed
+	float SprintSpeed;
+
+	// Target speed for interpolation
+	float TargetSpeed;
+
+	// Interpolation speed (how fast to reach target speed)
+	float SpeedInterpolationRate;
+
 };

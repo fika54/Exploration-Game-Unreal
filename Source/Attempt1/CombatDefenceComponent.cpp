@@ -34,7 +34,7 @@ void UCombatDefenceComponent::Dodge(const FVector& WorldDir)
     DodgeEndTime = GetWorld()->GetTimeSeconds() + DodgeIFrameSeconds;
 }
 
-FDamageResult UCombatDefenceComponent::HandleIncomingAttack(AActor* /*Attacker*/, float IncomingDamage,
+FDamageResult UCombatDefenceComponent::HandleIncomingAttack(AActor* Attacker, float IncomingDamage,
     const FVector& /*ImpactPoint*/, const FVector& ImpulseDir)
 {
     FDamageResult Out;
@@ -69,7 +69,7 @@ FDamageResult UCombatDefenceComponent::HandleIncomingAttack(AActor* /*Attacker*/
 
     if (Out.ActualDamage > 0.f)
     {
-        const FVector Impulse = ImpulseDir * 250.f + FVector::UpVector * 200.f;
+        const FVector Impulse = ImpulseDir * 1000.f + FVector::UpVector * 0.f;
         ApplyImpulseToCharacter(Impulse);
     }
 

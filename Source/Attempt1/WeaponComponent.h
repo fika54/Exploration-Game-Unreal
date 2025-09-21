@@ -5,14 +5,13 @@
 #include "Components/ActorComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
-#include "Animation/AnimTypes.h"                 // *** FIX: for FBranchingPointNotifyPayload
+#include "Animation/AnimTypes.h" // FBranchingPointNotifyPayload
 #include "WeaponComponent.generated.h"
 
-// ------------------------------------------------------------
-// Global types (must NOT be inside a class)
-// ------------------------------------------------------------
+// ==========================
+// Global types and delegates
+// ==========================
 
-// High-level type of weapon; extend as you like.
 UENUM(BlueprintType)
 enum class EWeaponType : uint8
 {
@@ -24,7 +23,6 @@ enum class EWeaponType : uint8
     Other       UMETA(DisplayName = "Other")
 };
 
-// *** FIX: move to global scope
 UENUM(BlueprintType)
 enum class EWeaponLocomotionSet : uint8
 {
@@ -32,10 +30,9 @@ enum class EWeaponLocomotionSet : uint8
     Combat      UMETA(DisplayName = "Combat")
 };
 
-// *** FIX: delegate typedef must also be at global scope
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLocomotionSetChanged, EWeaponLocomotionSet, NewSet);
 
-// ------------------------------------------------------------
+// ==========================
 
 USTRUCT(BlueprintType)
 struct FWeaponStats
@@ -58,10 +55,10 @@ struct FWeaponMeleeTraceSpec
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Melee Trace", meta = (ClampMin = 0, Units = "cm"))
-    float Distance = 75.f;
+    float Distance = 75.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Melee Trace", meta = (ClampMin = 0, Units = "cm"))
-    float Radius = 60.f;
+    float Radius = 60.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Melee Trace")
     bool bUseSocket = true;
@@ -81,7 +78,7 @@ class ATTEMPT1_API UWeaponComponent : public UActorComponent
 public:
     UWeaponComponent();
 
-    // ------------ Core identity ------------
+    // Core identity
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
     EWeaponType WeaponType = EWeaponType::Unarmed;
 
@@ -104,7 +101,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Mesh")
     TSubclassOf<UAnimInstance> WeaponAnimClassUnholstered;
 
-    // ------------ Stats & tuning ------------
+    // Stats and tuning
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
     FWeaponStats Stats;
 
@@ -121,12 +118,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
     FName MuzzleSocketName = FName("muzzle");
 
-    // ------------ Animations (match CombatCharacter) ------------
+    // Animations (matches your CombatCharacter style)
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Combo")
     UAnimMontage* ComboAttackMontage = nullptr;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Combo")
-    TArray<FName> ComboSectionNames;
+    TArray<FName> ComboSectionNames; // e.g. Light_1, Light_2, Light_3
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Combo", meta = (ClampMin = 0, ClampMax = 5))
     float ComboInputCacheTimeTolerance = 0.45f;
@@ -143,34 +140,36 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|General", meta = (ClampMin = 0, ClampMax = 5))
     float AttackInputCacheTimeTolerance = 1.0f;
 
-    // Equip/unequip (optional)
+    // Equip / Unequip
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Equip")
     TObjectPtr<UAnimMontage> UnholsterMontage;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Equip")
     TObjectPtr<UAnimMontage> HolsterMontage;
 
-    // ------------ (Optional) Owner anim layers / locomotion ------------
+    // Optional owner anim layering and locomotion overrides
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Owner")
-    TSubclassOf<UAnimInstance> OwnerWeaponLayerClass;  // linked via LinkAnimClassLayers
+    TSubclassOf<UAnimInstance> OwnerWeaponLayerClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Owner")
     bool bOverrideOwnerSpeedsOnEquip = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Owner", meta = (EditCondition = "bOverrideOwnerSpeedsOnEquip"))
-    float CombatWalkSpeed = 250.f;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Movement")
+    UAnimMontage* DodgeMontage = nullptr;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Owner", meta = (EditCondition = "bOverrideOwnerSpeedsOnEquip"))
-    float CombatRunSpeed = 450.f;
+    float CombatWalkSpeed = 250.0f;
 
-    // *** FIX: use global types declared above
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Owner", meta = (EditCondition = "bOverrideOwnerSpeedsOnEquip"))
+    float CombatRunSpeed = 450.0f;
+
     UPROPERTY(BlueprintAssignable, Category = "Anim|Owner")
     FOnLocomotionSetChanged OnLocomotionSetChanged;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|Owner")
     EWeaponLocomotionSet LocomotionSet = EWeaponLocomotionSet::Combat;
 
-    // ------------ Runtime state ------------
+    // Runtime state
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|State")
     bool bIsEquipped = false;
 
@@ -185,15 +184,15 @@ public:
     void SetWeaponType(EWeaponType NewType) { WeaponType = NewType; }
 
     UFUNCTION(BlueprintCallable, Category = "Weapon|Attack")
-    virtual void PrimaryAttack();              // combo
+    virtual void PrimaryAttack(); // combo
 
     UFUNCTION(BlueprintCallable, Category = "Weapon|Attack")
-    virtual void SecondaryAttack_Start();      // charge hold
+    virtual void SecondaryAttack_Start(); // charge hold
 
     UFUNCTION(BlueprintCallable, Category = "Weapon|Attack")
-    virtual void SecondaryAttack_Release();    // charge release
+    virtual void SecondaryAttack_Release(); // charge release
 
-    // Anim Notifies call these
+    // Anim notify entry points
     UFUNCTION(BlueprintCallable, Category = "Weapon|AnimNotify")
     void AN_CheckComboWindow();
 
@@ -206,6 +205,16 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Weapon|AnimNotify")
     void AN_DoHeavyTrace(FName DamageSourceBone);
 
+    // Optional: explicit hit window start/end notifies
+    UFUNCTION(BlueprintCallable, Category = "Weapon|AnimNotify")
+    void AN_HitWindowStart();
+
+    UFUNCTION(BlueprintCallable, Category = "Weapon|AnimNotify")
+    void AN_HitWindowEnd();
+
+    UFUNCTION(BlueprintCallable, Category = "Weapon|Movement")
+    void onDodge();
+
 protected:
     virtual void BeginPlay() override;
 
@@ -213,18 +222,22 @@ protected:
     void EnsureWeaponComponents();
     void AttachToOwnerSocket(const FName& SocketName);
     void ApplyWeaponAnimClass(bool bHolsteredState);
-    void PlayOwnerMontage(UAnimMontage* Montage, float PlayRate = 1.f) const;
+    void PlayOwnerMontage(UAnimMontage* Montage, float PlayRate = 1.0f) const;
 
     void StartCombo();
     void StartCharged();
     void AttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
     void PerformMeleeTrace(const FWeaponMeleeTraceSpec& Spec, FName DamageSourceBone);
 
-    // *** FIX: notify binding function signature
+    // Optional notify routing by name
     UFUNCTION()
     void OnMontageNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& Payload);
 
-    // Owner anim helpers (optional)
+    // Hit window helpers
+    void BeginHitWindow();
+    void EndHitWindow();
+
+    // Owner anim helpers
     void ApplyOwnerAnimLayers(bool bLink);
     void ApplyOwnerLocomotionOnEquip();
     void RestoreOwnerLocomotionOnHolster();
@@ -239,16 +252,19 @@ private:
     UPROPERTY(Transient) class USkeletalMeshComponent* WeaponSK = nullptr;
     UPROPERTY(Transient) class UStaticMeshComponent* WeaponSM = nullptr;
 
-    // State
-    bool  bIsAttacking = false;
-    bool  bIsChargingAttack = false;
-    bool  bHasLoopedChargedAttack = false;
+    // Attack state
+    bool bIsAttacking = false;
+    bool bIsChargingAttack = false;
+    bool bHasLoopedChargedAttack = false;
     int32 ComboIndex = 0;
     double CachedAttackInputTime = -1000.0;
 
     FOnMontageEnded OnAttackMontageEnded;
 
-    // cached owner speeds (optional)
-    float CachedWalkSpeed = 0.f;
-    float CachedRunSpeed = 0.f;
+    // Cached speeds
+    float CachedWalkSpeed = 0.0f;
+    float CachedRunSpeed = 0.0f;
+
+    // Actors already hit during current hit window
+    TSet<TWeakObjectPtr<AActor>> HitActorsCurrentWindow;
 };
